@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BadgeDollarSign, MessageCircle, Search } from 'lucide-react';
+import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 export default function ParcelasPage() {
   const [filter, setFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
+  const [paymentModal, setPaymentModal] = useState<{isOpen: boolean; parcela: any; amount: string; date: string}>({
+    isOpen: false, parcela: null, amount: '', date: ''
+  });
   const [parcelas, setParcelas] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -112,21 +115,27 @@ export default function ParcelasPage() {
     window.open(`https://wa.me/${wppLimpo}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const baixarPagamento = async (p: any) => {
-    if (!supabase) return;
+  const openPaymentModal = (p: any) => {
+    const pendente = Number(p.valor) - Number(p.valor_pago);
+    setPaymentModal({
+      isOpen: true,
+      parcela: p,
+      amount: pendente.toFixed(2),
+      date: new Date().toISOString().split('T')[0]
+    });
+  };
 
-    const faltaPagar = Number(p.valor) - Number(p.valor_pago);
-    const input = prompt(`Registrar pagamento para ${p.cliente}.\nFalta pagar: R$ ${faltaPagar.toFixed(2)} de R$ ${p.valor.toFixed(2)} \n\nDigite o valor recebido AGORA:`);
-    
-    if (!input) return;
-    
-    const valorRecebido = parseFloat(input.replace(',', '.'));
+  const confirmPayment = async () => {
+    if (!supabase || !paymentModal.parcela) return;
+    const p = paymentModal.parcela;
+
+    const valorRecebido = parseFloat(paymentModal.amount.replace(',', '.'));
     if (isNaN(valorRecebido) || valorRecebido <= 0) return alert('Valor inválido!');
 
+    setIsLoading(true);
     const novoValorPago = Number(p.valor_pago) + valorRecebido;
     let novoStatus = 'parcial';
     
-    // Se o valor recebido somado ao que ele já pagou cobrir a fatura = pago
     if (novoValorPago >= p.valor) {
       novoStatus = 'pago';
     }
@@ -134,17 +143,18 @@ export default function ParcelasPage() {
     const { error } = await supabase.from('parcelas').update({
       valor_pago: novoValorPago,
       status_parcela: novoStatus,
-      data_pagamento: novoStatus === 'pago' ? new Date().toISOString().split('T')[0] : null
+      data_pagamento: paymentModal.date
     }).eq('id', p.id);
 
     if (error) {
        console.error(error);
        alert('Erro ao registrar pagamento no banco de dados.');
+       setIsLoading(false);
     } else {
-       alert(`Pagamento registrado! Parcelas atualizada.`);
-       loadParcelas(); // Recarrega do banco
+       setPaymentModal({ isOpen: false, parcela: null, amount: '', date: '' });
+       loadParcelas();
     }
-  }
+  };
 
   return (
     <div className="space-y-6">
@@ -238,7 +248,7 @@ export default function ParcelasPage() {
                       )}
                       {p.status !== 'pago' && (
                          <button 
-                            onClick={() => baixarPagamento(p)}
+                            onClick={() => openPaymentModal(p)}
                             className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm"
                             title="Registrar Pagamento"
                          >
@@ -261,6 +271,80 @@ export default function ParcelasPage() {
           </table>
         </div>
       </div>
+
+      {paymentModal.isOpen && paymentModal.parcela && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Registrar Pagamento</h3>
+              <button 
+                onClick={() => setPaymentModal({ isOpen: false, parcela: null, amount: '', date: '' })}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-sm text-slate-600 dark:text-slate-400 mb-4 border border-slate-100 dark:border-slate-800">
+                 Parcela: <span className="font-semibold text-slate-900 dark:text-white">{paymentModal.parcela.num_parcela} de {paymentModal.parcela.total_parcelas}</span><br />
+                 Produto: <span className="font-semibold text-slate-900 dark:text-white">{paymentModal.parcela.produto}</span>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Valor Recebido (R$)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <BadgeDollarSign className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="block w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    value={paymentModal.amount}
+                    onChange={e => setPaymentModal({...paymentModal, amount: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Data do Pagamento
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <CalendarIcon className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="date"
+                    className="block w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    value={paymentModal.date}
+                    onChange={e => setPaymentModal({...paymentModal, date: e.target.value})}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+               <button 
+                 onClick={() => setPaymentModal({ isOpen: false, parcela: null, amount: '', date: '' })}
+                 className="px-4 py-4 sm:py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+               >
+                 Cancelar
+               </button>
+               <button 
+                 onClick={confirmPayment}
+                 disabled={isLoading}
+                 className="px-6 py-3 sm:py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+               >
+                 {isLoading ? 'Salvando...' : 'Confirmar Pagamento'}
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
