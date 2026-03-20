@@ -1,13 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X } from 'lucide-react';
+import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 export default function ParcelasPage() {
   const [filter, setFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentModal, setPaymentModal] = useState<{isOpen: boolean; parcela: any; amount: string; date: string}>({
+    isOpen: false, parcela: null, amount: '', date: ''
+  });
+  const [editModal, setEditModal] = useState<{isOpen: boolean; parcela: any; amount: string; date: string}>({
     isOpen: false, parcela: null, amount: '', date: ''
   });
   const [parcelas, setParcelas] = useState<any[]>([]);
@@ -156,6 +159,40 @@ export default function ParcelasPage() {
     }
   };
 
+  const openEditModal = (p: any) => {
+    setEditModal({
+      isOpen: true,
+      parcela: p,
+      amount: p.valor.toString(),
+      date: p.vencimento
+    });
+  };
+
+  const confirmEdit = async () => {
+    if (!supabase || !editModal.parcela) return;
+    const p = editModal.parcela;
+
+    const novoValor = parseFloat(editModal.amount.replace(',', '.'));
+    if (isNaN(novoValor) || novoValor <= 0) return alert('Valor inválido!');
+
+    if (!editModal.date) return alert('Data inválida!');
+
+    setIsLoading(true);
+    const { error } = await supabase.from('parcelas').update({
+      valor_parcela: novoValor,
+      data_vencimento: editModal.date
+    }).eq('id', p.id);
+
+    if (error) {
+       console.error(error);
+       alert('Erro ao atualizar a parcela.');
+       setIsLoading(false);
+    } else {
+       setEditModal({ isOpen: false, parcela: null, amount: '', date: '' });
+       loadParcelas();
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -237,6 +274,13 @@ export default function ParcelasPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                      <button 
+                        onClick={() => openEditModal(p)}
+                        className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
+                        title="Editar Parcela (Data e Valor)"
+                      >
+                         <Pencil className="w-4 h-4" />
+                      </button>
                       {(p.status === 'atrasado' || p.status === 'parcial_atrasado') && (
                         <button 
                           onClick={() => abrirWhatsApp(p)}
@@ -340,6 +384,79 @@ export default function ParcelasPage() {
                  className="px-6 py-3 sm:py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
                >
                  {isLoading ? 'Salvando...' : 'Confirmar Pagamento'}
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editModal.isOpen && editModal.parcela && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Editar Parcela</h3>
+              <button 
+                onClick={() => setEditModal({ isOpen: false, parcela: null, amount: '', date: '' })}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg text-sm text-yellow-800 dark:text-yellow-400 mb-4 border border-yellow-200 dark:border-yellow-900/30">
+                 Aviso: Alterar a data mudará quando essa parcela será considerada Atrasada. O "Valor Total da Parcela" determina o alvo que deve ser atingido no pagamento.
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Valor Total da Parcela (R$)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <BadgeDollarSign className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="block w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    value={editModal.amount}
+                    onChange={e => setEditModal({...editModal, amount: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Nova Data de Vencimento
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <CalendarIcon className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="date"
+                    className="block w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    value={editModal.date}
+                    onChange={e => setEditModal({...editModal, date: e.target.value})}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+               <button 
+                 onClick={() => setEditModal({ isOpen: false, parcela: null, amount: '', date: '' })}
+                 className="px-4 py-4 sm:py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+               >
+                 Cancelar
+               </button>
+               <button 
+                 onClick={confirmEdit}
+                 disabled={isLoading}
+                 className="px-6 py-3 sm:py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+               >
+                 {isLoading ? 'Salvando...' : 'Salvar Alterações'}
                </button>
             </div>
           </div>
