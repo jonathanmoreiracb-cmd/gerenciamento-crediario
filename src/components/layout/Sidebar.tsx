@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, ShoppingCart, CalendarDays, Settings, User } from 'lucide-react';
+import { LayoutDashboard, Receipt, CalendarDays, Settings, User, Users, PlusCircle } from 'lucide-react';
 
 export default function Sidebar() {
   return (
@@ -11,14 +11,20 @@ export default function Sidebar() {
         <Link href="/" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
           <LayoutDashboard className="w-5 h-5" /> Dashboard
         </Link>
+        <Link href="/vendas/nova" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
+          <PlusCircle className="w-5 h-5" /> Nova Venda
+        </Link>
         <Link href="/clientes" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
           <User className="w-5 h-5" /> Clientes
         </Link>
         <Link href="/vendas" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
-          <ShoppingCart className="w-5 h-5" /> Vendas
+          <Receipt className="w-5 h-5" /> Vendas
         </Link>
         <Link href="/parcelas" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
           <CalendarDays className="w-5 h-5" /> Cobranças
+        </Link>
+        <Link href="/colaboradores" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
+          <Users className="w-5 h-5" /> Colaboradores
         </Link>
       </nav>
       <div className="p-4 border-t border-slate-800">

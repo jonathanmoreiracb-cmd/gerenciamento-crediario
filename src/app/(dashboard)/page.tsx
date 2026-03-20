@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 export default function Dashboard() {
   const [metrics, setMetrics] = useState({
     aReceberMes: 0,
+    aReceberGeral: 0,
     emAtraso: 0,
     recebidoMes: 0
   });
@@ -30,6 +31,13 @@ export default function Dashboard() {
         .lte('data_vencimento', lastDay);
 
       const aReceberMes = aReceber?.reduce((acc, curr) => acc + (Number(curr.valor_parcela) - Number(curr.valor_pago)), 0) || 0;
+
+      // NOVO: Total Geral em Aberto (Todo Período)
+      const { data: aReceberGeralData } = await supabase.from('parcelas')
+        .select('valor_parcela, valor_pago')
+        .in('status_parcela', ['aberto', 'parcial', 'atrasado']);
+        
+      const aReceberGeral = aReceberGeralData?.reduce((acc, curr) => acc + (Number(curr.valor_parcela) - Number(curr.valor_pago)), 0) || 0;
 
       // Total em Atraso Geral
       const today = new Date().toISOString().split('T')[0];
@@ -76,7 +84,7 @@ export default function Dashboard() {
          .order('data_venda', { ascending: false })
          .limit(5);
 
-      setMetrics({ aReceberMes, emAtraso, recebidoMes });
+      setMetrics({ aReceberMes, aReceberGeral, emAtraso, recebidoMes });
       setInadimplentes(parcelasAtrasadas);
       if (vendas) setUltimasVendas(vendas);
       setLoading(false);
@@ -98,6 +106,9 @@ export default function Dashboard() {
               <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
                 {loading ? '...' : formatBRL(metrics.aReceberMes)}
               </h3>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-2">
+                Total Geral em Aberto: <span className="font-bold">{loading ? '...' : formatBRL(metrics.aReceberGeral)}</span>
+              </p>
             </div>
             <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
               <DollarSign className="w-6 h-6" />
@@ -160,7 +171,8 @@ export default function Dashboard() {
                      const pendente = Number(p.valor_parcela) - Number(p.valor_pago);
                      let wppLimpo = p.venda?.cliente?.whatsapp?.replace(/\D/g, '') || '';
                      if (wppLimpo.length === 11) wppLimpo = `55${wppLimpo}`;
-                     const text = `Olá ${p.venda?.cliente?.nome}, sua parcela de R$ ${p.valor_parcela.toFixed(2)} do produto ${p.venda?.produto_nome} venceu em ${p.data_vencimento.split('-').reverse().join('/')}. Como podemos prosseguir com o pagamento?`;
+                     const pixMsg = `\n\nCHAVE PIX:\nFITCH TECNOLOGIDA LTDA\nCNPJ: 52311538000110`;
+                     const text = `Olá ${p.venda?.cliente?.nome}, sua parcela de R$ ${p.valor_parcela.toFixed(2)} do produto ${p.venda?.produto_nome} venceu em ${p.data_vencimento.split('-').reverse().join('/')}. Como podemos prosseguir com o pagamento?${pixMsg}`;
                      const waLink = `https://wa.me/${wppLimpo}?text=${encodeURIComponent(text)}`;
 
                      return (

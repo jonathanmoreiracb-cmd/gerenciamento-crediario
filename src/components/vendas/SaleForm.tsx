@@ -14,6 +14,8 @@ const saleSchema = z.object({
   novo_cliente_nome: z.string().optional(),
   novo_cliente_whatsapp: z.string().optional(),
   novo_cliente_cpf: z.string().optional(),
+  novo_cliente_is_colaborador: z.boolean().optional().default(false),
+  observacao: z.string().optional(),
   syscor_id: z.string().optional(),
   produto_nome: z.string().min(3, 'Nome do produto é obrigatório'),
   valor_total: z.coerce.number().min(1, 'O valor total deve ser maior que zero'),
@@ -69,7 +71,8 @@ export default function SaleForm() {
         const { data: novoCli, error: errCli } = await supabase.from('clientes').insert({
           nome: data.novo_cliente_nome,
           whatsapp: data.novo_cliente_whatsapp,
-          cpf: data.novo_cliente_cpf
+          cpf: data.novo_cliente_cpf,
+          is_colaborador: data.novo_cliente_is_colaborador
         }).select().single();
         if (errCli) {
             console.error(errCli);
@@ -91,6 +94,7 @@ export default function SaleForm() {
           produto_nome: data.produto_nome,
           valor_total: data.valor_total,
           num_parcelas: data.num_parcelas,
+          observacao: data.observacao || null,
           data_venda: data.data_venda,
           status_geral: 'em_aberto'
         })
@@ -187,6 +191,10 @@ export default function SaleForm() {
               <label className="block text-xs text-slate-500 dark:text-slate-400">CPF</label>
               <input {...register('novo_cliente_cpf')} className="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 py-2 px-3 text-sm focus:border-indigo-500 focus:ring-indigo-500 border"/>
             </div>
+            <div className="col-span-1 md:col-span-3 flex items-center gap-2 mt-2">
+              <input type="checkbox" id="is_colab" {...register('novo_cliente_is_colaborador')} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+              <label htmlFor="is_colab" className="text-sm text-slate-700 dark:text-slate-300">Marcar como Colaborador / Funcionário da Loja</label>
+            </div>
           </div>
         )}
 
@@ -233,6 +241,18 @@ export default function SaleForm() {
             </div>
             {errors.data_venda && <p className="mt-2 text-sm text-red-600">{errors.data_venda.message}</p>}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Observações / Negociação Específica (Opcional)
+          </label>
+          <textarea
+            rows={2}
+            placeholder="Ex: Cliente vai pagar a primeira parcela em dinheiro vivo e o resto no PIX..."
+            {...register('observacao')}
+            className="block w-full rounded-md border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 py-2.5 px-3 text-slate-900 dark:text-slate-200 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 border"
+          />
         </div>
 
         <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-lg border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-6">

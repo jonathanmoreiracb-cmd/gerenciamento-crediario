@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
-export default function ParcelasPage() {
+export default function ColaboradoresPage() {
   const [filter, setFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentModal, setPaymentModal] = useState<{isOpen: boolean; parcela: any; amount: string; date: string}>({
@@ -30,7 +30,7 @@ export default function ParcelasPage() {
           cliente:clientes!inner ( nome, whatsapp, is_colaborador )
         )
       `)
-      .neq('venda.cliente.is_colaborador', true)
+      .eq('venda.cliente.is_colaborador', true)
       .order('data_vencimento', { ascending: true });
 
     if (error) {
@@ -199,7 +199,7 @@ export default function ParcelasPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Gestão de Cobranças</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Gestão de Colaboradores</h2>
         
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
            <div className="relative w-full sm:w-64">
