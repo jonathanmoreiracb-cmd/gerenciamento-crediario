@@ -32,7 +32,11 @@ export default function ParcelasPage() {
       const hoje = new Date().toISOString().split('T')[0];
       const formatado = data.map((p: any) => {
         let realStatus = p.status_parcela;
-        if ((realStatus === 'aberto' || realStatus === 'parcial') && p.data_vencimento < hoje) {
+        const isLate = p.data_vencimento < hoje;
+        
+        if (realStatus === 'parcial' && isLate) {
+           realStatus = 'parcial_atrasado';
+        } else if (realStatus === 'aberto' && isLate) {
            realStatus = 'atrasado';
         }
 
@@ -59,14 +63,26 @@ export default function ParcelasPage() {
   }, []);
 
   const filtered = parcelas.filter(p => {
-    const matchStatus = filter === 'todos' || p.status === filter;
+    let matchStatus = false;
+    if (filter === 'todos') {
+      matchStatus = true;
+    } else if (filter === 'atrasado') {
+      matchStatus = p.status === 'atrasado' || p.status === 'parcial_atrasado';
+    } else if (filter === 'parcial') {
+      matchStatus = p.status === 'parcial' || p.status === 'parcial_atrasado';
+    } else {
+      matchStatus = p.status === filter;
+    }
+
     const matchSearch = p.cliente.toLowerCase().includes(searchTerm.toLowerCase());
     return matchStatus && matchSearch;
   });
 
   const getStatusColor = (status: string) => {
     switch(status) {
-      case 'atrasado': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'atrasado':
+      case 'parcial_atrasado': 
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
       case 'pago': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
       case 'parcial': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
       default: return 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400';
@@ -76,6 +92,7 @@ export default function ParcelasPage() {
   const getStatusName = (status: string) => {
     switch(status) {
       case 'atrasado': return 'Atrasado';
+      case 'parcial_atrasado': return 'Atrasado (Parcial)';
       case 'pago': return 'Pago';
       case 'parcial': return 'Parcial';
       default: return 'Em Aberto';
@@ -210,7 +227,7 @@ export default function ParcelasPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                      {p.status === 'atrasado' && (
+                      {(p.status === 'atrasado' || p.status === 'parcial_atrasado') && (
                         <button 
                           onClick={() => abrirWhatsApp(p)}
                           className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white rounded-md transition-colors shadow-sm"
