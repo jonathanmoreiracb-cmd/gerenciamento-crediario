@@ -12,16 +12,18 @@ export default function VendasPage() {
     isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: ''
   });
 
-  useEffect(() => {
-    async function loadVendas() {
-      if (!supabase) return;
-      const { data } = await supabase.from('vendas')
-        .select(`id, syscor_id, produto_nome, valor_total, num_parcelas, data_venda, status_geral, observacao, cliente:clientes(nome)`)
-        .order('data_venda', { ascending: false });
+  const loadVendas = async () => {
+    setLoading(true);
+    if (!supabase) return;
+    const { data } = await supabase.from('vendas')
+      .select(`id, syscor_id, produto_nome, valor_total, num_parcelas, data_venda, status_geral, observacao, cliente:clientes(nome)`)
+      .order('data_venda', { ascending: false });
 
-      if (data) setVendas(data);
-      setLoading(false);
-    }
+    if (data) setVendas(data);
+    setLoading(false);
+  }
+
+  useEffect(() => {
     loadVendas();
   }, []);
 
