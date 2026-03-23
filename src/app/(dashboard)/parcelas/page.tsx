@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 export default function ParcelasPage() {
   const [filter, setFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [paymentModal, setPaymentModal] = useState<{isOpen: boolean; parcela: any; amount: string; date: string}>({
     isOpen: false, parcela: null, amount: '', date: ''
   });
@@ -83,7 +84,8 @@ export default function ParcelasPage() {
     }
 
     const matchSearch = p.cliente.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchStatus && matchSearch;
+    const matchMonth = monthFilter === '' || p.vencimento.startsWith(monthFilter);
+    return matchStatus && matchSearch && matchMonth;
   });
 
   const getStatusColor = (status: string) => {
@@ -202,6 +204,13 @@ export default function ParcelasPage() {
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Gestão de Cobranças</h2>
         
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+           <input
+             type="month"
+             className="block w-full sm:w-auto px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+             value={monthFilter}
+             onChange={e => setMonthFilter(e.target.value)}
+             title="Filtrar por Mês de Vencimento"
+           />
            <div className="relative w-full sm:w-64">
              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                <Search className="h-4 w-4 text-slate-400" />

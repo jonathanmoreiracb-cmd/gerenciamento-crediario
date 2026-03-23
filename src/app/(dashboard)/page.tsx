@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { DollarSign, AlertCircle, CheckCircle, MessageCircle } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { DollarSign, AlertCircle, CheckCircle, MessageCircle, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 export default function Dashboard() {
@@ -14,16 +14,21 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [ultimasVendas, setUltimasVendas] = useState<any[]>([]);
   const [inadimplentes, setInadimplentes] = useState<any[]>([]);
+  const [dashboardMonth, setDashboardMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
 
-  useEffect(() => {
-    async function loadData() {
-      if (!supabase) return;
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    if (!supabase) return;
 
-      const date = new Date();
-      const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
-      const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
+    const [year, month] = dashboardMonth.split('-');
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
 
-      // Total a Receber no Mês
+    // Total a Receber no Mês
       const { data: aReceber } = await supabase.from('parcelas')
         .select('valor_parcela, valor_pago')
         .in('status_parcela', ['aberto', 'parcial'])
@@ -88,21 +93,38 @@ export default function Dashboard() {
       setInadimplentes(parcelasAtrasadas);
       if (vendas) setUltimasVendas(vendas);
       setLoading(false);
-    }
+  }, [dashboardMonth]);
+
+  useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const formatBRL = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+  const [y, m] = dashboardMonth.split('-');
+  const monthName = new Date(Number(y), Number(m) - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Resumo Financeiro</h2>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Resumo Financeiro</h2>
+        
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
+           <Calendar className="w-5 h-5 text-indigo-500" />
+           <input 
+             type="month" 
+             value={dashboardMonth}
+             onChange={e => setDashboardMonth(e.target.value)}
+             className="bg-transparent border-none focus:ring-0 text-sm font-medium text-slate-700 dark:text-slate-300 p-0 cursor-pointer"
+           />
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total a Receber no Mês</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 capitalize">A Receber - {monthName}</p>
               <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
                 {loading ? '...' : formatBRL(metrics.aReceberMes)}
               </h3>
@@ -133,7 +155,7 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Recebido (Mês)</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 capitalize">Recebido - {monthName}</p>
               <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                  {loading ? '...' : formatBRL(metrics.recebidoMes)}
               </h3>
