@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UserX, Users, Pencil, X } from 'lucide-react';
+import { UserX, Users, Pencil, X, FileText, Copy, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 export default function ClientesPage() {
@@ -9,6 +9,9 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState<{isOpen: boolean; cliente: any; nome: string; whatsapp: string; cpf: string}>({
     isOpen: false, cliente: null, nome: '', whatsapp: '', cpf: ''
+  });
+  const [reportModal, setReportModal] = useState<{isOpen: boolean; cliente: any; text: string; loading: boolean; copied: boolean}>({
+    isOpen: false, cliente: null, text: '', loading: false, copied: false
   });
 
   const loadClientes = async () => {
@@ -46,6 +49,85 @@ export default function ClientesPage() {
       whatsapp: c.whatsapp || '',
       cpf: c.cpf || ''
     });
+  }
+
+  const openReportModal = async (c: any) => {
+    setReportModal({ isOpen: true, cliente: c, text: '', loading: true, copied: false });
+    
+    const { data: vendas, error } = await supabase.from('vendas')
+      .select(`
+        id, produto_nome, data_venda, valor_total, num_parcelas, observacao,
+        parcelas ( id, num_parcela, valor_parcela, data_vencimento, status_parcela, valor_pago )
+      `)
+      .eq('cliente_id', c.id)
+      .order('data_venda', { ascending: false });
+
+    if (error || !vendas) {
+       setReportModal(prev => ({...prev, loading: false, text: 'Erro ao carregar dados do cliente.'}));
+       return;
+    }
+
+    let report = `*RELATÓRIO FINANCEIRO E EXTRATO*\n`;
+    report += `Cliente: ${c.nome}\n`;
+    report += `WhatsApp: ${c.whatsapp}\n`;
+    report += `CPF: ${c.cpf}\n`;
+    report += `Gerado em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}\n\n`;
+
+    if (vendas.length === 0) {
+       report += `*Nenhuma compra registrada para este cliente.*\n`;
+    } else {
+       let totalAtrasado = 0;
+       let totalAberto = 0;
+       let totalPago = 0;
+
+       vendas.forEach((v: any, index: number) => {
+          report += `*${index + 1}. Compra: ${v.produto_nome}*\n`;
+          report += `Data: ${v.data_venda.split('-').reverse().join('/')} | Total: ${Number(v.valor_total).toLocaleString('pt-BR', {style: 'currency', currency:'BRL'})}\n`;
+          if (v.observacao) report += `Obs: ${v.observacao}\n`;
+          
+          const sortedParcelas = v.parcelas.sort((a: any, b: any) => a.num_parcela - b.num_parcela);
+          sortedParcelas.forEach((p: any) => {
+             const valParcela = Number(p.valor_parcela);
+             const valPago = Number(p.valor_pago || 0);
+             const pendente = valParcela - valPago;
+             const venc = p.data_vencimento.split('-').reverse().join('/');
+             let statusLine = '';
+
+             const isOverdue = p.status_parcela !== 'pago' && new Date(p.data_vencimento) < new Date(new Date().toISOString().split('T')[0]);
+             const trueStatus = isOverdue ? 'atrasado' : p.status_parcela;
+
+             if (trueStatus === 'pago') {
+               statusLine = `✔️ PAGO`;
+               totalPago += valParcela;
+             } else if (trueStatus === 'atrasado') {
+               statusLine = `❌ ATRASADO`;
+               if (valPago > 0) statusLine += ` (Pago: R$ ${valPago.toFixed(2)} | Falta: R$ ${pendente.toFixed(2)})`;
+               totalAtrasado += pendente;
+             } else {
+               statusLine = `⏳ EM ABERTO`;
+               if (valPago > 0) statusLine += ` (Parcial: R$ ${valPago.toFixed(2)} | Falta: R$ ${pendente.toFixed(2)})`;
+               totalAberto += pendente;
+             }
+
+             report += `  - Parcela ${p.num_parcela}/${v.num_parcelas} (Venc: ${venc}): ${statusLine}\n`;
+          });
+          report += `\n`;
+       });
+
+       report += `-------------------------\n`;
+       report += `*RESUMO DA CONTA:*\n`;
+       report += `Total Pago: ${totalPago.toLocaleString('pt-BR', {style: 'currency', currency:'BRL'})}\n`;
+       report += `Total em Atraso: ${totalAtrasado.toLocaleString('pt-BR', {style: 'currency', currency:'BRL'})}\n`;
+       report += `Total a Vencer (Aberto): ${totalAberto.toLocaleString('pt-BR', {style: 'currency', currency:'BRL'})}\n`;
+    }
+
+    setReportModal(prev => ({...prev, loading: false, text: report}));
+  };
+
+  const copyReport = () => {
+    navigator.clipboard.writeText(reportModal.text);
+    setReportModal(prev => ({...prev, copied: true}));
+    setTimeout(() => setReportModal(prev => ({...prev, copied: false})), 2000);
   }
 
   const confirmEdit = async () => {
@@ -100,6 +182,13 @@ export default function ClientesPage() {
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">{c.cpf}</td>
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatDate(c.data_cadastro)}</td>
                   <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                     <button 
+                       onClick={() => openReportModal(c)}
+                       className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-md transition-colors"
+                       title="Gerar Relatório Extraído"
+                     >
+                       <FileText className="w-4 h-4" />
+                     </button>
                      <button 
                        onClick={() => openEditModal(c)}
                        className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
@@ -187,6 +276,54 @@ export default function ClientesPage() {
                  className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
                >
                  Salvar Alterações
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reportModal.isOpen && reportModal.cliente && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                 <FileText className="w-5 h-5 text-indigo-500" />
+                 Relatório do Cliente
+              </h3>
+              <button 
+                onClick={() => setReportModal({ isOpen: false, cliente: null, text: '', loading: false, copied: false })}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto bg-slate-50 dark:bg-slate-900/50 flex-1">
+              {reportModal.loading ? (
+                 <div className="flex flex-col items-center justify-center h-48 space-y-4">
+                    <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                    <p className="text-sm font-medium text-slate-500">Extraindo pagamentos...</p>
+                 </div>
+              ) : (
+                 <pre className="whitespace-pre-wrap font-mono text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                    {reportModal.text}
+                 </pre>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-3 shrink-0">
+               <button 
+                 onClick={() => setReportModal({ isOpen: false, cliente: null, text: '', loading: false, copied: false })}
+                 className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+               >
+                 Fechar
+               </button>
+               <button 
+                 onClick={copyReport}
+                 disabled={reportModal.loading}
+                 className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+               >
+                 {reportModal.copied ? <><Check className="w-4 h-4"/> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar para WhatsApp</>}
                </button>
             </div>
           </div>
