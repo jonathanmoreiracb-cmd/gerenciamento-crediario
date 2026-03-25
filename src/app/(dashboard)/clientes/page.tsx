@@ -52,6 +52,7 @@ export default function ClientesPage() {
   }
 
   const openReportModal = async (c: any) => {
+    if (!supabase) return;
     setReportModal({ isOpen: true, cliente: c, text: '', loading: true, copied: false });
     
     const { data: vendas, error } = await supabase.from('vendas')
