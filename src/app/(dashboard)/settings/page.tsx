@@ -41,10 +41,11 @@ export default function SettingsPage() {
     setSuccessMsg('');
 
     try {
+      // Query and update by username to avoid fallback UUID mismatch issues
       const { error } = await supabase
         .from('usuarios')
         .update({ nome: targetNome })
-        .eq('id', user.id);
+        .eq('username', user.username);
 
       if (error) throw error;
 
@@ -84,15 +85,19 @@ export default function SettingsPage() {
     setSuccessMsg('');
 
     try {
-      // Validate old password first
+      // Query by username to avoid fallback UUID mismatch issues
       const { data: dbUser, error: queryErr } = await supabase
         .from('usuarios')
-        .select('senha_hash')
-        .eq('id', user.id)
-        .single();
+        .select('id, senha_hash')
+        .eq('username', user.username)
+        .maybeSingle();
 
-      if (queryErr || !dbUser) {
-        throw new Error('Erro ao consultar usuário no banco.');
+      if (queryErr) {
+        throw new Error(`Erro ao consultar usuário no banco: ${queryErr.message}`);
+      }
+      
+      if (!dbUser) {
+        throw new Error('Usuário não encontrado na tabela do banco de dados. Verifique se o script SQL foi executado no Supabase.');
       }
 
       const hashedOldInput = await sha256(senhaAntiga);
@@ -104,7 +109,7 @@ export default function SettingsPage() {
       const { error: updateErr } = await supabase
         .from('usuarios')
         .update({ senha_hash: hashedNew })
-        .eq('id', user.id);
+        .eq('id', dbUser.id);
 
       if (updateErr) throw updateErr;
 
