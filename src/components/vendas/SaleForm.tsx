@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Save, User, DollarSign, Calendar, Package, PlusCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { Cliente } from '@/types';
+import { useAuth } from '@/lib/context/AuthContext';
 
 // Updated Schema to optionally allow creation of a new client
 const saleSchema = z.object({
@@ -26,6 +27,7 @@ const saleSchema = z.object({
 type SaleFormValues = z.infer<typeof saleSchema>;
 
 export default function SaleForm() {
+  const { logAction } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
 
@@ -60,8 +62,9 @@ export default function SaleForm() {
     try {
       if (!supabase) throw new Error("Supabase client not initialized.");
       let finalClienteId = data.cliente_id;
+      let clienteNome = '';
 
-      // 1. Creat novo cliente on the fly
+      // 1. Criar novo cliente on the fly
       if (isNovoCliente) {
         if (!data.novo_cliente_nome || !data.novo_cliente_whatsapp || !data.novo_cliente_cpf) {
           alert('Preencha os dados do novo cliente!');
@@ -74,15 +77,24 @@ export default function SaleForm() {
           cpf: data.novo_cliente_cpf,
           is_colaborador: data.novo_cliente_is_colaborador
         }).select().single();
+        
         if (errCli) {
             console.error(errCli);
             alert('Erro ao criar cliente. CPF pode já existir.');
             setIsLoading(false);
             return;
         }
+
         finalClienteId = novoCli.id;
+        clienteNome = novoCli.nome;
+        
+        // Registrar log de criação de cliente
+        await logAction('criar_cliente', `Operador criou o cliente "${novoCli.nome}" via formulário de vendas`, novoCli);
+
         // Atualiza combo p/ next time
         setClientes(prev => [...prev, novoCli]);
+      } else {
+        clienteNome = clientes.find(c => c.id === finalClienteId)?.nome || 'Cliente Selecionado';
       }
 
       // 2. Inserir a Venda
@@ -124,6 +136,13 @@ export default function SaleForm() {
       // 4. Inserir o array de Parcelas
       const { error: parcelasError } = await supabase.from('parcelas').insert(arrayParcelas);
       if (parcelasError) throw parcelasError;
+
+      // Registrar log de criação da venda
+      await logAction(
+        'criar_venda', 
+        `Operador lançou a venda de "${data.produto_nome}" (R$ ${data.valor_total.toFixed(2)}) em ${data.num_parcelas}x para o cliente ${clienteNome}`,
+        { venda: novaVenda, parcelas: arrayParcelas }
+      );
 
       alert(`Venda registrada com sucesso! ${data.num_parcelas} parcelas geradas.`);
       reset(); // Limpa formulário
@@ -300,7 +319,7 @@ export default function SaleForm() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full sm:w-auto inline-flex justify-center items-center gap-2 rounded-md bg-indigo-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="w-full sm:w-auto inline-flex justify-center items-center gap-2 rounded-md bg-indigo-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
           >
             {isLoading ? (
               <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>

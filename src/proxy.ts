@@ -24,10 +24,27 @@ export async function proxy(request: NextRequest) {
 
   const authCookie = request.cookies.get('site_auth')?.value;
   const password = process.env.SITE_PASSWORD || 'fitch123';
-  const expectedHash = await sha256(password);
 
-  // If no auth cookie or if it does not match the hashed password, redirect to login
-  if (!authCookie || authCookie !== expectedHash) {
+  let authenticated = false;
+  let userId = '';
+  let userNome = '';
+  let userUsername = '';
+
+  if (authCookie) {
+    const parts = authCookie.split(':');
+    if (parts.length === 4) {
+      const [id, encodedNome, username, signature] = parts;
+      const expectedSignature = await sha256(id + username + password);
+      if (signature === expectedSignature) {
+        authenticated = true;
+        userId = id;
+        userNome = decodeURIComponent(encodedNome);
+        userUsername = username;
+      }
+    }
+  }
+
+  if (!authenticated) {
     const loginUrl = new URL('/login', request.url);
     if (pathname !== '/' && pathname !== '') {
       loginUrl.searchParams.set('redirect', pathname);
@@ -35,7 +52,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // Pass authenticated user details upstream in headers
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-user-id', userId);
+  requestHeaders.set('x-user-name', userNome);
+  requestHeaders.set('x-user-username', userUsername);
+
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 }
 
 export const config = {

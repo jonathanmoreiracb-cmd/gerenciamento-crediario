@@ -4,12 +4,21 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PlusCircle, Pencil, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 
 export default function VendasPage() {
+  const { logAction } = useAuth();
   const [vendas, setVendas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editModal, setEditModal] = useState<{isOpen: boolean; venda: any; produto_nome: string; syscor_id: string; observacao: string}>({
-    isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: ''
+  const [editModal, setEditModal] = useState<{
+    isOpen: boolean; 
+    venda: any; 
+    produto_nome: string; 
+    syscor_id: string; 
+    observacao: string;
+    valor_total: string;
+  }>({
+    isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '', valor_total: ''
   });
 
   const loadVendas = async () => {
@@ -21,7 +30,7 @@ export default function VendasPage() {
 
     if (data) setVendas(data);
     setLoading(false);
-  }
+  };
 
   useEffect(() => {
     loadVendas();
@@ -33,44 +42,69 @@ export default function VendasPage() {
       venda: v,
       produto_nome: v.produto_nome || '',
       syscor_id: v.syscor_id || '',
-      observacao: v.observacao || ''
+      observacao: v.observacao || '',
+      valor_total: v.valor_total ? v.valor_total.toString() : ''
     });
-  }
+  };
 
   const confirmEdit = async () => {
     if (!supabase || !editModal.venda) return;
     const v = editModal.venda;
     
     if (!editModal.produto_nome) return alert('O nome do produto é obrigatório');
+    
+    const novoValor = parseFloat(editModal.valor_total.replace(',', '.'));
+    if (isNaN(novoValor) || novoValor <= 0) return alert('Valor total da venda é inválido');
 
     const { error } = await supabase.from('vendas').update({
       produto_nome: editModal.produto_nome,
       syscor_id: editModal.syscor_id,
-      observacao: editModal.observacao
+      observacao: editModal.observacao,
+      valor_total: novoValor
     }).eq('id', v.id);
 
     if (error) {
       console.error(error);
       alert('Erro ao atualizar venda.');
     } else {
-      setEditModal({ isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '' });
+      // Registrar log de auditoria da edição
+      await logAction(
+        'editar_venda', 
+        `Operador editou a venda "${v.produto_nome}" do cliente ${v.cliente?.nome} (R$ ${Number(v.valor_total).toFixed(2)} → R$ ${novoValor.toFixed(2)})`,
+        {
+          venda_id: v.id,
+          antes: { produto: v.produto_nome, valor: v.valor_total, syscor: v.syscor_id, obs: v.observacao },
+          depois: { produto: editModal.produto_nome, valor: novoValor, syscor: editModal.syscor_id, obs: editModal.observacao }
+        }
+      );
+
+      setEditModal({ isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '', valor_total: '' });
       loadVendas();
     }
-  }
+  };
 
   const handleDelete = async (id: string, produto: string) => {
     if (!supabase) return;
     
-    if (confirm(`ATENÇÃO! Tem certeza que deseja apagar a venda "${produto}"?\\n\\nISSO APAGARÁ TODAS AS PARCELAS VINCULADAS A ELA.`)) {
+    const v = vendas.find((x) => x.id === id);
+    if (!v) return;
+
+    if (confirm(`ATENÇÃO! Tem certeza que deseja apagar a venda "${produto}"?\n\nISSO APAGARÁ TODAS AS PARCELAS VINCULADAS A ELA PERMANENTEMENTE.`)) {
        const { error } = await supabase.from('vendas').delete().eq('id', id);
        if (error) {
          console.error(error);
          alert('Erro ao apagar venda.');
        } else {
+         // Registrar log de auditoria da exclusão
+         await logAction(
+           'excluir_venda',
+           `Operador excluiu permanentemente a venda "${v.produto_nome}" (Total: R$ ${Number(v.valor_total).toFixed(2)}) do cliente ${v.cliente?.nome}`,
+           { venda_id: id, dados_venda: v }
+         );
          loadVendas();
        }
     }
-  }
+  };
 
   const formatBRL = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -125,7 +159,7 @@ export default function VendasPage() {
                   <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                      <button 
                        onClick={() => openEditModal(v)}
-                       className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
+                       className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors animate-pulse"
                        title="Editar Venda"
                      >
                        <Pencil className="w-4 h-4" />
@@ -139,12 +173,11 @@ export default function VendasPage() {
                      </button>
                   </td>
                 </tr>
-
               ))}
               
               {!loading && vendas.length === 0 && (
                 <tr>
-                   <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                   <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                       Nenhuma venda encontrada.
                    </td>
                 </tr>
@@ -160,7 +193,7 @@ export default function VendasPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Editar Dados da Venda</h3>
               <button 
-                onClick={() => setEditModal({ isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '' })}
+                onClick={() => setEditModal({ isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '', valor_total: '' })}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -175,6 +208,17 @@ export default function VendasPage() {
                   className="block w-full px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   value={editModal.produto_nome}
                   onChange={e => setEditModal({...editModal, produto_nome: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor Total da Venda (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="block w-full px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                  value={editModal.valor_total}
+                  onChange={e => setEditModal({...editModal, valor_total: e.target.value})}
                 />
               </div>
 
@@ -201,7 +245,7 @@ export default function VendasPage() {
 
             <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
                <button 
-                 onClick={() => setEditModal({ isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '' })}
+                 onClick={() => setEditModal({ isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '', valor_total: '' })}
                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
                >
                  Cancelar

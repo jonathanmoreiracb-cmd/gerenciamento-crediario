@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X, Pencil } from 'lucide-react';
+import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X, Pencil, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 
 export default function ParcelasPage() {
+  const { logAction } = useAuth();
   const [filter, setFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
@@ -110,11 +112,9 @@ export default function ParcelasPage() {
   };
 
   const abrirWhatsApp = (p: any) => {
-    // Transforma "2023-11-10" em formato mais amigável
     const [y, m, d] = p.vencimento.split('-');
     const venFormatado = `${d}/${m}/${y}`;
     
-    // Transforma whatsapp para padrao +55 se faltar, remove chars caso exista
     let wppLimpo = p.whatsapp.replace(/\D/g, '');
     if (wppLimpo.length === 11) wppLimpo = `55${wppLimpo}`;
 
@@ -159,8 +159,46 @@ export default function ParcelasPage() {
        alert('Erro ao registrar pagamento no banco de dados.');
        setIsLoading(false);
     } else {
+       // Registrar log de auditoria do pagamento
+       await logAction(
+         'pagamento_parcela', 
+         `Operador registrou pagamento de R$ ${valorRecebido.toFixed(2)} na parcela ${p.num_parcela}/${p.total_parcelas} (Total: R$ ${Number(p.valor).toFixed(2)}) do cliente ${p.cliente}`,
+         { parcela_id: p.id, valor_recebido: valorRecebido, novo_valor_pago: novoValorPago, status: novoStatus }
+       );
+
        setPaymentModal({ isOpen: false, parcela: null, amount: '', date: '' });
        loadParcelas();
+    }
+  };
+
+  const handleRevertPayment = async (p: any) => {
+    if (!supabase) return;
+
+    if (confirm(`ATENÇÃO! Tem certeza que deseja estornar o pagamento da parcela ${p.num_parcela} de ${p.total_parcelas} do cliente "${p.cliente}"?\n\nISSO RETORNARÁ O STATUS PARA "EM ABERTO" E LIMPARÁ O VALOR PAGO.`)) {
+      setIsLoading(true);
+      const { error } = await supabase
+        .from('parcelas')
+        .update({
+          valor_pago: 0,
+          status_parcela: 'aberto',
+          data_pagamento: null
+        })
+        .eq('id', p.id);
+
+      if (error) {
+        console.error(error);
+        alert('Erro ao estornar pagamento.');
+        setIsLoading(false);
+      } else {
+        // Registrar log de auditoria do estorno
+        await logAction(
+          'estorno_parcela', 
+          `Operador estornou o pagamento da parcela ${p.num_parcela}/${p.total_parcelas} (R$ ${Number(p.valor).toFixed(2)}) do cliente ${p.cliente} (dívida reaberta)`,
+          { parcela_id: p.id, dados_parcela: p }
+        );
+        
+        loadParcelas();
+      }
     }
   };
 
@@ -193,6 +231,17 @@ export default function ParcelasPage() {
        alert('Erro ao atualizar a parcela.');
        setIsLoading(false);
     } else {
+       // Registrar log de auditoria da alteração da parcela
+       await logAction(
+         'editar_parcela', 
+         `Operador alterou os dados da parcela ${p.num_parcela}/${p.total_parcelas} do cliente ${p.cliente} (Valor R$ ${Number(p.valor).toFixed(2)} → R$ ${novoValor.toFixed(2)} | Vencimento ${p.vencimento.split('-').reverse().join('/')} → ${editModal.date.split('-').reverse().join('/')})`,
+         {
+           parcela_id: p.id,
+           antes: { valor: p.valor, vencimento: p.vencimento },
+           depois: { valor: novoValor, vencimento: editModal.date }
+         }
+       );
+
        setEditModal({ isOpen: false, parcela: null, amount: '', date: '' });
        loadParcelas();
     }
@@ -204,37 +253,37 @@ export default function ParcelasPage() {
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Gestão de Cobranças</h2>
         
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-           <input
-             type="month"
-             className="block w-full sm:w-auto px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-             value={monthFilter}
-             onChange={e => setMonthFilter(e.target.value)}
-             title="Filtrar por Mês de Vencimento"
-           />
-           <div className="relative w-full sm:w-64">
-             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-               <Search className="h-4 w-4 text-slate-400" />
-             </div>
-             <input
-               type="text"
-               placeholder="Buscar cliente..."
-               className="block w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-               value={searchTerm}
-               onChange={e => setSearchTerm(e.target.value)}
-             />
-           </div>
+            <input
+              type="month"
+              className="block w-full sm:w-auto px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              value={monthFilter}
+              onChange={e => setMonthFilter(e.target.value)}
+              title="Filtrar por Mês de Vencimento"
+            />
+            <div className="relative w-full sm:w-64">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4.5 w-4.5 text-slate-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Buscar cliente..."
+                className="block w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
 
-           <select 
-             className="w-full sm:w-auto rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 py-2.5 px-3 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 border"
-             value={filter}
-             onChange={e => setFilter(e.target.value)}
-           >
-             <option value="todos">Todas Parcelas</option>
-             <option value="atrasado">🚨 Atrasadas</option>
-             <option value="aberto">⏳ Em Aberto</option>
-             <option value="parcial">⚠️ Pagas Parcialmente</option>
-             <option value="pago">✅ Pagas</option>
-           </select>
+            <select 
+              className="w-full sm:w-auto rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 py-2.5 px-3 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 border"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+            >
+              <option value="todos">Todas Parcelas</option>
+              <option value="atrasado">🚨 Atrasadas</option>
+              <option value="abako">⏳ Em Aberto</option>
+              <option value="parcial">⚠️ Pagas Parcialmente</option>
+              <option value="pago">✅ Pagas</option>
+            </select>
         </div>
       </div>
 
@@ -253,7 +302,7 @@ export default function ParcelasPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {isLoading && (
+              {isLoading && parcelas.length === 0 && (
                  <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                       Carregando dados do Supabase...
@@ -301,7 +350,7 @@ export default function ParcelasPage() {
                       {(p.status === 'atrasado' || p.status === 'parcial_atrasado') && (
                         <button 
                           onClick={() => abrirWhatsApp(p)}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white rounded-md transition-colors shadow-sm"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white rounded-md transition-colors shadow-sm cursor-pointer"
                           title="Cobrar via WhatsApp"
                         >
                           <MessageCircle className="w-4 h-4" /> <span className="hidden xl:inline">Cobrar</span>
@@ -310,11 +359,20 @@ export default function ParcelasPage() {
                       {p.status !== 'pago' && (
                          <button 
                             onClick={() => openPaymentModal(p)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm cursor-pointer"
                             title="Registrar Pagamento"
                          >
                            <BadgeDollarSign className="w-4 h-4" /> <span className="hidden xl:inline">Receber</span>
                          </button>
+                      )}
+                      {Number(p.valor_pago) > 0 && (
+                        <button 
+                           onClick={() => handleRevertPayment(p)}
+                           className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-100 hover:bg-red-200 dark:bg-red-950/20 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 rounded-md transition-colors shadow-sm cursor-pointer"
+                           title="Estornar e Reabrir Pagamento"
+                        >
+                          <RotateCcw className="w-4 h-4" /> <span className="hidden xl:inline">Estornar</span>
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -324,7 +382,7 @@ export default function ParcelasPage() {
               {!isLoading && filtered.length === 0 && (
                 <tr>
                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                      Nenhuma parcela encontrada para este status.
+                      Nenhuma parcela encontrada.
                    </td>
                 </tr>
               )}
@@ -398,7 +456,7 @@ export default function ParcelasPage() {
                <button 
                  onClick={confirmPayment}
                  disabled={isLoading}
-                 className="px-6 py-3 sm:py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                 className="px-6 py-3 sm:py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
                >
                  {isLoading ? 'Salvando...' : 'Confirmar Pagamento'}
                </button>
@@ -471,7 +529,7 @@ export default function ParcelasPage() {
                <button 
                  onClick={confirmEdit}
                  disabled={isLoading}
-                 className="px-6 py-3 sm:py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                 className="px-6 py-3 sm:py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
                >
                  {isLoading ? 'Salvando...' : 'Salvar Alterações'}
                </button>

@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { UserX, Users, Pencil, X, FileText, Copy, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 
 export default function ClientesPage() {
+  const { logAction } = useAuth();
   const [clientes, setClientes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState<{isOpen: boolean; cliente: any; nome: string; whatsapp: string; cpf: string}>({
@@ -20,7 +22,7 @@ export default function ClientesPage() {
     const { data } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
     if (data) setClientes(data);
     setLoading(false);
-  }
+  };
 
   useEffect(() => {
     loadClientes();
@@ -35,11 +37,13 @@ export default function ClientesPage() {
         console.error(error);
         alert('Erro ao apagar cliente.');
       } else {
+        // Registrar log de auditoria
+        await logAction('excluir_cliente', `Operador excluiu permanentemente o cliente "${nome}" e todo o seu histórico financeiro`, { cliente_id: id, nome });
         alert('Cliente e todas as suas compras apagados com sucesso!');
         loadClientes();
       }
     }
-  }
+  };
 
   const openEditModal = (c: any) => {
     setEditModal({
@@ -49,7 +53,7 @@ export default function ClientesPage() {
       whatsapp: c.whatsapp || '',
       cpf: c.cpf || ''
     });
-  }
+  };
 
   const openReportModal = async (c: any) => {
     if (!supabase) return;
@@ -129,7 +133,7 @@ export default function ClientesPage() {
     navigator.clipboard.writeText(reportModal.text);
     setReportModal(prev => ({...prev, copied: true}));
     setTimeout(() => setReportModal(prev => ({...prev, copied: false})), 2000);
-  }
+  };
 
   const confirmEdit = async () => {
     if (!supabase || !editModal.cliente) return;
@@ -147,10 +151,17 @@ export default function ClientesPage() {
       console.error(error);
       alert('Erro ao atualizar cliente.');
     } else {
+      // Registrar log de auditoria
+      await logAction('editar_cliente', `Operador editou as informações cadastrais do cliente "${c.nome}"`, {
+        cliente_id: c.id,
+        antes: { nome: c.nome, whatsapp: c.whatsapp, cpf: c.cpf },
+        depois: { nome: editModal.nome, whatsapp: editModal.whatsapp, cpf: editModal.cpf }
+      });
+      
       setEditModal({ isOpen: false, cliente: null, nome: '', whatsapp: '', cpf: '' });
       loadClientes();
     }
-  }
+  };
 
   const formatDate = (ts: string) => new Date(ts).toLocaleDateString('pt-BR');
 
@@ -188,21 +199,21 @@ export default function ClientesPage() {
                        className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-md transition-colors"
                        title="Gerar Relatório Extraído"
                      >
-                       <FileText className="w-4 h-4" />
+                       <FileText className="w-4.5 h-4.5" />
                      </button>
                      <button 
                        onClick={() => openEditModal(c)}
                        className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
                        title="Editar Dados"
                      >
-                       <Pencil className="w-4 h-4" />
+                       <Pencil className="w-4.5 h-4.5" />
                      </button>
                      <button 
                        onClick={() => handleDelete(c.id, c.nome)}
-                       className="inline-flex items-center justify-center p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-md transition-colors"
+                       className="inline-flex items-center justify-center p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-md transition-colors font-medium"
                        title="Apagar Cliente e Registros"
                      >
-                       <UserX className="w-5 h-5" />
+                       <UserX className="w-4.5 h-4.5" />
                      </button>
                   </td>
                 </tr>
