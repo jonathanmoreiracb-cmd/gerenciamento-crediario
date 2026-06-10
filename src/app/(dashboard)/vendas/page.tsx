@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { PlusCircle, Pencil, Trash2, X } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, X, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/context/AuthContext';
+import ReceiptModal from '@/components/layout/ReceiptModal';
 
 export default function VendasPage() {
   const { logAction } = useAuth();
@@ -20,15 +21,30 @@ export default function VendasPage() {
   }>({
     isOpen: false, venda: null, produto_nome: '', syscor_id: '', observacao: '', valor_total: ''
   });
+  const [receiptModal, setReceiptModal] = useState<{isOpen: boolean; venda: any}>({
+    isOpen: false, venda: null
+  });
 
   const loadVendas = async () => {
     setLoading(true);
     if (!supabase) return;
     const { data } = await supabase.from('vendas')
-      .select(`id, syscor_id, produto_nome, valor_total, num_parcelas, data_venda, status_geral, observacao, cliente:clientes(nome)`)
+      .select(`
+        id, syscor_id, produto_nome, valor_total, num_parcelas, data_venda, status_geral, observacao,
+        cliente:clientes(nome, cpf, whatsapp),
+        parcelas(id, num_parcela, valor_parcela, data_pagamento, valor_pago, status_parcela)
+      `)
       .order('data_venda', { ascending: false });
 
-    if (data) setVendas(data);
+    if (data) {
+      const sorted = data.map((v: any) => {
+        if (v.parcelas) {
+          v.parcelas.sort((a: any, b: any) => a.num_parcela - b.num_parcela);
+        }
+        return v;
+      });
+      setVendas(sorted);
+    }
     setLoading(false);
   };
 
@@ -157,6 +173,15 @@ export default function VendasPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                     {v.status_geral === 'quitado' && (
+                       <button 
+                         onClick={() => setReceiptModal({ isOpen: true, venda: v })}
+                         className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
+                         title="Recibo de Quitação Total"
+                       >
+                         <FileText className="w-4 h-4" />
+                       </button>
+                     )}
                      <button 
                        onClick={() => openEditModal(v)}
                        className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors animate-pulse"
@@ -260,6 +285,13 @@ export default function VendasPage() {
           </div>
         </div>
       )}
+
+      <ReceiptModal 
+        isOpen={receiptModal.isOpen}
+        onClose={() => setReceiptModal({ isOpen: false, venda: null })}
+        type="quitacao"
+        venda={receiptModal.venda}
+      />
     </div>
   );
 }

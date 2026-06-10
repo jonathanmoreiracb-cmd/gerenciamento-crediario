@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X, Pencil, RotateCcw } from 'lucide-react';
+import { BadgeDollarSign, MessageCircle, Search, CalendarIcon, X, Pencil, RotateCcw, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/context/AuthContext';
+import ReceiptModal from '@/components/layout/ReceiptModal';
 
 export default function ColaboradoresPage() {
   const { logAction } = useAuth();
@@ -16,6 +17,9 @@ export default function ColaboradoresPage() {
   const [editModal, setEditModal] = useState<{isOpen: boolean; parcela: any; amount: string; date: string}>({
     isOpen: false, parcela: null, amount: '', date: ''
   });
+  const [receiptModal, setReceiptModal] = useState<{isOpen: boolean; parcela: any}>({
+    isOpen: false, parcela: null
+  });
   const [parcelas, setParcelas] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -27,10 +31,10 @@ export default function ColaboradoresPage() {
     const { data, error } = await supabase
       .from('parcelas')
       .select(`
-        id, num_parcela, valor_parcela, data_vencimento, status_parcela, valor_pago,
+        id, num_parcela, valor_parcela, data_vencimento, status_parcela, valor_pago, data_pagamento,
         venda:vendas!inner (
           id, produto_nome, num_parcelas, observacao,
-          cliente:clientes!inner ( nome, whatsapp, is_colaborador )
+          cliente:clientes!inner ( nome, whatsapp, cpf, is_colaborador )
         )
       `)
       .eq('venda.cliente.is_colaborador', true)
@@ -53,6 +57,7 @@ export default function ColaboradoresPage() {
         return {
           id: p.id,
           cliente: p.venda?.cliente?.nome || 'Desconhecido',
+          cpf: p.venda?.cliente?.cpf || '',
           whatsapp: p.venda?.cliente?.whatsapp || '',
           produto: p.venda?.produto_nome || '',
           observacao: p.venda?.observacao || '',
@@ -61,7 +66,8 @@ export default function ColaboradoresPage() {
           valor: p.valor_parcela,
           vencimento: p.data_vencimento,
           status: realStatus,
-          valor_pago: p.valor_pago
+          valor_pago: p.valor_pago,
+          data_pagamento: p.data_pagamento
         };
       });
       setParcelas(formatado);
@@ -347,6 +353,15 @@ export default function ColaboradoresPage() {
                       >
                          <Pencil className="w-4 h-4" />
                       </button>
+                      {Number(p.valor_pago) > 0 && (
+                        <button 
+                          onClick={() => setReceiptModal({ isOpen: true, parcela: p })}
+                          className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors"
+                          title="Gerar Comprovante de Pagamento"
+                        >
+                           <FileText className="w-4 h-4" />
+                        </button>
+                      )}
                       {(p.status === 'atrasado' || p.status === 'parcial_atrasado') && (
                         <button 
                           onClick={() => abrirWhatsApp(p)}
@@ -537,6 +552,13 @@ export default function ColaboradoresPage() {
           </div>
         </div>
       )}
+
+      <ReceiptModal 
+        isOpen={receiptModal.isOpen}
+        onClose={() => setReceiptModal({ isOpen: false, parcela: null })}
+        type="parcela"
+        parcela={receiptModal.parcela}
+      />
     </div>
   );
 }
