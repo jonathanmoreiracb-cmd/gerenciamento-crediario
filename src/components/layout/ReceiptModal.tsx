@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { X, Printer, CheckCircle, FileText, Calendar, DollarSign, User, FileSpreadsheet } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Printer, CheckCircle, FileText, Calendar, DollarSign, User, FileSpreadsheet, Copy, Check, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 
 interface ReceiptModalProps {
@@ -20,6 +20,7 @@ interface ReceiptModalProps {
     cpf?: string;
     produto: string;
     observacao?: string;
+    whatsapp?: string;
   } | null;
   venda?: {
     id: string;
@@ -46,6 +47,7 @@ interface ReceiptModalProps {
 
 export default function ReceiptModal({ isOpen, onClose, type, parcela, venda }: ReceiptModalProps) {
   const { user, logAction } = useAuth();
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     // Prevent background scrolling when modal is open on screen
@@ -103,22 +105,155 @@ export default function ReceiptModal({ isOpen, onClose, type, parcela, venda }: 
   const todayStr = new Date().toLocaleDateString('pt-BR');
   const operatorName = user?.nome || 'Operador';
 
+  const getReceiptText = () => {
+    if (type === 'parcela' && parcela) {
+      return `*COMPROVANTE DE PAGAMENTO - FITCH TECNOLOGIA LTDA*
+CNPJ: 52.311.538/0001-10
+--------------------------------------------------
+*DADOS DO CLIENTE*
+Cliente: ${parcela.cliente}
+CPF: ${parcela.cpf || 'Não informado'}
+
+*DETALHES DO PAGAMENTO*
+Produto: ${parcela.produto}
+Parcela: ${parcela.num_parcela} de ${parcela.total_parcelas}
+Vencimento: ${formatDate(parcela.vencimento)}
+Data do Pagamento: ${formatDate(parcela.data_pagamento)}
+Valor da Parcela: ${formatCurrency(parcela.valor)}
+*Valor Pago: ${formatCurrency(parcela.valor_pago)}*
+--------------------------------------------------
+Autenticação: ${parcela.id}
+Emitido por: ${operatorName} em ${todayStr}`;
+    } else if (type === 'quitacao' && venda) {
+      const clienteNome = venda.cliente?.nome || 'Cliente';
+      const parcelasList = venda.parcelas
+        ? venda.parcelas.map(p => `• Parcela ${p.num_parcela}/${venda.num_parcelas}: ${formatCurrency(p.valor_pago)} em ${formatDate(p.data_pagamento)}`).join('\n')
+        : '';
+      return `*RECIBO DE QUITAÇÃO TOTAL - FITCH TECNOLOGIA LTDA*
+CNPJ: 52.311.538/0001-10
+--------------------------------------------------
+*DADOS DO CLIENTE*
+Cliente: ${clienteNome}
+CPF: ${venda.cliente?.cpf || 'Não informado'}
+
+*DETALHES DA COMPRA*
+Produto: ${venda.produto_nome}
+${venda.syscor_id ? `Nº Venda (Syscor): ${venda.syscor_id}\n` : ''}Data da Compra: ${formatDate(venda.data_venda)}
+
+*HISTÓRICO DE PARCELAS QUITADAS*
+${parcelasList}
+
+*STATUS: QUITAÇÃO TOTAL E LIQUIDAÇÃO DE DÉBITO*
+A Fitch Tecnologia LTDA declara para os devidos fins a quitação total do débito referente a este contrato.
+*Total Pago: ${formatCurrency(venda.valor_total)}*
+--------------------------------------------------
+Autenticação: ${venda.id}
+Emitido por: ${operatorName} em ${todayStr}`;
+    }
+    return '';
+  };
+
+  const handleCopyText = async () => {
+    const text = getReceiptText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      
+      if (type === 'parcela' && parcela) {
+        await logAction(
+          'copiar_texto_comprovante_parcela',
+          `Operador copiou dados do comprovante da parcela ${parcela.num_parcela}/${parcela.total_parcelas} do cliente ${parcela.cliente}`,
+          { parcela_id: parcela.id }
+        );
+      } else if (type === 'quitacao' && venda) {
+        await logAction(
+          'copiar_texto_comprovante_quitacao',
+          `Operador copiou dados de quitação da venda "${venda.produto_nome}" do cliente ${venda.cliente?.nome}`,
+          { venda_id: venda.id }
+        );
+      }
+    } catch (err) {
+      alert('Erro ao copiar texto.');
+    }
+  };
+
+  const handleShareWhatsApp = async () => {
+    const text = getReceiptText();
+    if (!text) return;
+    
+    let wpp = '';
+    if (type === 'parcela' && parcela) {
+      wpp = parcela.whatsapp || '';
+    } else if (type === 'quitacao' && venda) {
+      wpp = venda.cliente?.whatsapp || '';
+    }
+    
+    let wppLimpo = wpp.replace(/\D/g, '');
+    if (wppLimpo.length === 11) wppLimpo = `55${wppLimpo}`;
+
+    try {
+      if (type === 'parcela' && parcela) {
+        await logAction(
+          'compartilhar_whatsapp_comprovante_parcela',
+          `Operador compartilhou via WhatsApp o comprovante da parcela ${parcela.num_parcela}/${parcela.total_parcelas} do cliente ${parcela.cliente}`,
+          { parcela_id: parcela.id }
+        );
+      } else if (type === 'quitacao' && venda) {
+        await logAction(
+          'compartilhar_whatsapp_comprovante_quitacao',
+          `Operador compartilhou via WhatsApp o comprovante de quitação da venda "${venda.produto_nome}" do cliente ${venda.cliente?.nome}`,
+          { venda_id: venda.id }
+        );
+      }
+    } catch (e) {}
+
+    window.open(`https://wa.me/${wppLimpo}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print-backdrop-active overflow-y-auto">
       <div className="bg-white dark:bg-slate-950 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-slate-800 print-modal-box my-8">
         
         {/* On-screen Header Actions (Hidden in Print) */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 no-print">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 no-print">
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
             <FileText className="w-5 h-5" />
             <span className="font-semibold text-sm sm:text-base">Visualizar Comprovante</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleCopyText}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+              title="Copiar texto do comprovante para a área de transferência"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  Copiado!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  Copiar Texto
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleShareWhatsApp}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+              title="Enviar comprovante formatado via WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              WhatsApp
+            </button>
             <button
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm cursor-pointer"
+              title="Imprimir ou exportar como PDF nativo"
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-3.5 h-3.5" />
               Imprimir / PDF
             </button>
             <button
@@ -126,7 +261,7 @@ export default function ReceiptModal({ isOpen, onClose, type, parcela, venda }: 
               className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
               title="Fechar"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
